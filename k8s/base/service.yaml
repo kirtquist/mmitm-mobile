@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mmitm-mobile
+spec:
+  type: ClusterIP
+  selector:
+    app: mmitm-mobile
+  ports:
+    - port: 80
+      targetPort: 80
+      protocol: TCP
+      name: http

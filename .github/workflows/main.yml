@@ -1,0 +1,146 @@
+name: Build and Deploy
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
+env:
+  # For project pages: https://<user>.github.io/<repo>/
+  PUBLIC_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
+  # Docker image configuration
+  GCP_PROJECT: edgeshop-2026
+  GCP_REGION: us-west1
+  REPO_NAME: edge-shop
+  IMAGE_NAME: mmitm-mobile
+  REGISTRY: us-west1-docker.pkg.dev
+  IMAGE_PATH: us-west1-docker.pkg.dev/edgeshop-2026/edge-shop/mmitm-mobile
+
+
+jobs:
+  # build-pages:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: actions/setup-node@v4
+  #       with:
+  #         node-version: 20
+  #         cache: npm
+  #     - run: npm ci
+  #     - name: Build Expo web
+  #       run: npx expo export --platform web --output-dir dist
+
+  #     # Prefix leading "/_expo/" to "/<repo>/_expo/" so assets load under project pages.
+  #     # Skipped for user/organization sites named "<owner>.github.io".
+  #     - name: Prefix asset paths for GitHub Project Pages
+  #       if: ${{ github.event.repository.name != format('{0}.github.io', github.repository_owner) }}
+  #       run: |
+  #         set -euo pipefail
+  #         REPO="${{ github.event.repository.name }}"
+  #         find dist -type f -regextype posix-extended -regex '.*\.(html|js|css|json|map)$' -print0 \
+  #           | xargs -0 sed -i \
+  #             -e "s|\"/_expo/|\"/${REPO}/_expo/|g" \
+  #             -e "s|'/_expo/|'/\${REPO}/_expo/|g"
+
+  #     - name: SPA fallback (404 -> index)
+  #       run: cp dist/index.html dist/404.html
+  #     - uses: actions/upload-pages-artifact@v3
+  #       with:
+  #         path: dist
+
+  # deploy-pages:
+  #   environment:
+  #     name: github-pages
+  #     url: ${{ steps.deployment.outputs.page_url }}
+  #   runs-on: ubuntu-latest
+  #   needs: build-pages
+  #   steps:
+  #     - id: deployment
+  #       uses: actions/deploy-pages@v4
+
+  build-docker:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Authenticate to Google Cloud
+        # Uses service account key from GitHub secret
+        # To set up: Create a service account key and add it as GCP_SA_KEY secret
+        # See SETUP_SA_KEY.md for instructions
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: |
+          gcloud auth configure-docker ${{ env.REGISTRY }} --quiet
+
+      - name: Extract metadata
+        id: meta
+        run: |
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          BRANCH_NAME=$(echo "${{ github.ref_name }}" | tr '/' '-')
+          echo "short_sha=${SHORT_SHA}" >> $GITHUB_OUTPUT
+          echo "branch_name=${BRANCH_NAME}" >> $GITHUB_OUTPUT
+          echo "full_sha=${{ github.sha }}" >> $GITHUB_OUTPUT
+
+      - name: Build Docker image
+        run: |
+          docker build -t ${{ env.IMAGE_PATH }}:latest \
+                       -t ${{ env.IMAGE_PATH }}:${{ steps.meta.outputs.short_sha }} \
+                       -t ${{ env.IMAGE_PATH }}:${{ steps.meta.outputs.branch_name }} \
+                       .
+
+      - name: Push Docker images
+        run: |
+          docker push ${{ env.IMAGE_PATH }}:latest
+          docker push ${{ env.IMAGE_PATH }}:${{ steps.meta.outputs.short_sha }}
+          docker push ${{ env.IMAGE_PATH }}:${{ steps.meta.outputs.branch_name }}
+
+      - name: Output image tags
+        run: |
+          echo "✅ Images pushed successfully:"
+          echo "  - ${{ env.IMAGE_PATH }}:latest"
+          echo "  - ${{ env.IMAGE_PATH }}:${{ steps.meta.outputs.short_sha }}"
+          echo "  - ${{ env.IMAGE_PATH }}:${{ steps.meta.outputs.branch_name }}"
+
+      # NEW: Update Kubernetes manifest with new image tag
+      - name: Update Kubernetes manifest
+        run: |
+          # Check if using Kustomize (kustomization.yaml) or direct deployment.yaml
+          if [ -f "k8s/overlays/dev/kustomization.yaml" ]; then
+            # Update kustomization.yaml (Kustomize)
+            sed -i "s|newTag:.*|newTag: ${{ steps.meta.outputs.short_sha }}|g" k8s/overlays/dev/kustomization.yaml
+            sed -i "s|newName:.*|newName: ${{ env.IMAGE_PATH }}|g" k8s/overlays/dev/kustomization.yaml || true
+          elif [ -f "k8s/overlays/dev/deployment.yaml" ]; then
+            # Update deployment.yaml directly
+            sed -i "s|image:.*mmitm-mobile.*|image: ${{ env.IMAGE_PATH }}:${{ steps.meta.outputs.short_sha }}|g" k8s/overlays/dev/deployment.yaml
+          else
+            echo "⚠️ Warning: Could not find k8s/overlays/dev/kustomization.yaml or deployment.yaml"
+            exit 1
+          fi
+
+      # NEW: Commit and push the updated manifest
+      - name: Commit and push manifest update
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add k8s/overlays/dev/
+          git diff --staged --quiet || git commit -m "chore: update image tag to ${{ steps.meta.outputs.short_sha }} [skip ci]"
+          git push
