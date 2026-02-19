@@ -17,5 +17,5 @@ patchesStrategicMerge:
 images:
   - name: your-registry/mmitm-mobile
     newName: us-west1-docker.pkg.dev/edgeshop-2026/edge-shop/mmitm-mobile
-    # newTag: 8d3d7e7
-    newTag: 8d3d7e7
+    # newTag: e836082
+    newTag: e836082
