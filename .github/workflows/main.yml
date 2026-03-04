@@ -144,3 +144,33 @@ jobs:
           git add k8s/overlays/dev/
           git diff --staged --quiet || git commit -m "chore: update image tag to ${{ steps.meta.outputs.short_sha }} [skip ci]"
           git push
+
+  deploy-cloudrun:
+    runs-on: ubuntu-latest
+    needs: build-docker
+    environment: dev
+    steps:
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy to Cloud Run
+        run: |
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          gcloud run deploy mmitm-mobile-app \
+            --image ${{ env.IMAGE_PATH }}:${SHORT_SHA} \
+            --region ${{ env.GCP_REGION }} \
+            --platform managed \
+            --port 80 \
+            --allow-unauthenticated
+
+      - name: Output Cloud Run service URL
+        id: cloudrun-url
+        run: |
+          URL=$(gcloud run services describe mmitm-mobile-app --region ${{ env.GCP_REGION }} --format 'value(status.url)')
+          echo "url=${URL}" >> $GITHUB_OUTPUT
+          echo "Cloud Run URL: ${URL}"          
