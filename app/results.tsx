@@ -1,5 +1,15 @@
-import { View, Text, FlatList, TouchableOpacity, StyleSheet } from "react-native";
-import { useRouter } from "expo-router";
+import { useCallback, useState } from "react";
+import {
+  View,
+  Text,
+  FlatList,
+  TouchableOpacity,
+  StyleSheet,
+} from "react-native";
+import { useFocusEffect, useRouter } from "expo-router";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
+import { MMITM_SESSION_KEY, type MmitmSession } from "../lib/map/mmitmSession";
 
 type Place = {
   id: string;
@@ -16,11 +26,47 @@ const MOCK_PLACES: Place[] = [
 
 export default function ResultsScreen() {
   const router = useRouter();
+  const [session, setSession] = useState<MmitmSession | null>(null);
+
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      AsyncStorage.getItem(MMITM_SESSION_KEY).then((raw) => {
+        if (cancelled) return;
+        if (raw) {
+          try {
+            setSession(JSON.parse(raw) as MmitmSession);
+          } catch {
+            setSession(null);
+          }
+        } else {
+          setSession(null);
+        }
+      });
+      return () => {
+        cancelled = true;
+      };
+    }, [])
+  );
 
   return (
     <View style={styles.container}>
       <View style={styles.mapPlaceholder}>
-        <Text>🗺 Map Placeholder</Text>
+        {session ? (
+          <>
+            <Text style={styles.centerLabel}>
+              Center: {session.center.lat.toFixed(4)}, {session.center.lon.toFixed(4)}
+            </Text>
+            <TouchableOpacity
+              style={styles.mapButton}
+              onPress={() => router.push("/map")}
+            >
+              <Text style={styles.mapButtonText}>View on Map</Text>
+            </TouchableOpacity>
+          </>
+        ) : (
+          <Text>🗺 Map Placeholder</Text>
+        )}
       </View>
 
       <FlatList
@@ -48,7 +94,16 @@ const styles = StyleSheet.create({
     backgroundColor: "#eee",
     justifyContent: "center",
     alignItems: "center",
+    gap: 12,
   },
+  centerLabel: { fontSize: 14 },
+  mapButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: "#007AFF",
+    borderRadius: 8,
+  },
+  mapButtonText: { color: "#fff", fontWeight: "600" },
   card: {
     padding: 16,
     borderBottomWidth: 1,

@@ -1,6 +1,20 @@
 import { useState } from "react";
-import { View, Text, TextInput, Button, FlatList, TouchableOpacity, StyleSheet } from "react-native";
+import {
+  View,
+  Text,
+  TextInput,
+  Button,
+  FlatList,
+  TouchableOpacity,
+  StyleSheet,
+  ActivityIndicator,
+} from "react-native";
 import { useRouter } from "expo-router";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
+import { geocodeMembers } from "../lib/api/geocodeNominatim";
+import { MMITM_SESSION_KEY } from "../lib/map/mmitmSession";
+import { geographicMidpoint } from "../lib/map/midpoint";
 
 type Member = {
   id: string;
@@ -17,12 +31,56 @@ export default function PartySetupScreen() {
   const [name, setName] = useState("");
   const [address, setAddress] = useState("");
   const [selectedType, setSelectedType] = useState<string>("Cafe");
+  const [geocoding, setGeocoding] = useState(false);
+  const [geocodeError, setGeocodeError] = useState<string | null>(null);
 
   const addMember = () => {
     if (!name || !address) return;
     setMembers([...members, { id: Date.now().toString(), name, address }]);
     setName("");
     setAddress("");
+  };
+
+  const removeMember = (id: string) => {
+    setMembers(members.filter((m) => m.id !== id));
+  };
+
+  const runGeocodeAndNavigate = async (destination: "results" | "map") => {
+    if (members.length < 2) {
+      setGeocodeError("Add at least 2 members to find midpoint.");
+      return;
+    }
+    setGeocoding(true);
+    setGeocodeError(null);
+    try {
+      const origins = await geocodeMembers(members);
+      if (origins.length < 2) {
+        setGeocodeError(
+          `Could not geocode enough addresses (${origins.length}/2). Try zip codes or full addresses.`
+        );
+        return;
+      }
+      const center = geographicMidpoint(origins);
+      if (!center) return;
+
+      const session = {
+        origins,
+        center,
+        radiusMiles: 10,
+      };
+      await AsyncStorage.setItem(MMITM_SESSION_KEY, JSON.stringify(session));
+      if (destination === "results") {
+        router.push("/results");
+      } else {
+        router.push("/map");
+      }
+    } catch (e) {
+      setGeocodeError(
+        e instanceof Error ? e.message : "Geocoding failed. Try again."
+      );
+    } finally {
+      setGeocoding(false);
+    }
   };
 
   return (
@@ -49,9 +107,17 @@ export default function PartySetupScreen() {
         data={members}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
-          <Text style={styles.memberItem}>
-            {item.name} — {item.address}
-          </Text>
+          <View style={styles.memberRow}>
+            <Text style={styles.memberItem}>
+              {item.name} — {item.address}
+            </Text>
+            <TouchableOpacity
+              onPress={() => removeMember(item.id)}
+              style={styles.deleteButton}
+            >
+              <Text style={styles.deleteButtonText}>Delete</Text>
+            </TouchableOpacity>
+          </View>
         )}
       />
 
@@ -72,9 +138,27 @@ export default function PartySetupScreen() {
         ))}
       </View>
 
+      {geocodeError && (
+        <Text style={styles.errorText}>{geocodeError}</Text>
+      )}
+
+      {geocoding && (
+        <View style={styles.loadingRow}>
+          <ActivityIndicator />
+          <Text style={styles.loadingText}>Finding locations…</Text>
+        </View>
+      )}
+
       <Button
         title="Find Midpoint"
-        onPress={() => router.push("/results")}
+        onPress={() => runGeocodeAndNavigate("results")}
+        disabled={geocoding}
+      />
+
+      <Button
+        title="View Map"
+        onPress={() => runGeocodeAndNavigate("map")}
+        disabled={geocoding}
       />
     </View>
   );
@@ -91,7 +175,19 @@ const styles = StyleSheet.create({
     marginVertical: 8,
     borderRadius: 6,
   },
-  memberItem: { marginVertical: 4 },
+  memberRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginVertical: 4,
+  },
+  memberItem: { flex: 1 },
+  deleteButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    marginLeft: 8,
+  },
+  deleteButtonText: { color: "#c00", fontSize: 14 },
   poiRow: { flexDirection: "row", gap: 10, marginVertical: 10 },
   poiChip: {
     padding: 8,
@@ -102,4 +198,16 @@ const styles = StyleSheet.create({
   poiSelected: {
     backgroundColor: "#ddd",
   },
+  errorText: {
+    color: "#c00",
+    marginTop: 8,
+    fontSize: 14,
+  },
+  loadingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginVertical: 8,
+  },
+  loadingText: { fontSize: 14 },
 });

@@ -29,6 +29,7 @@ export default function RootLayout() {
     <Stack>
       <Stack.Screen name="index" options={{ title: "Meet in the Middle" }} />
       <Stack.Screen name="results" options={{ title: "Suggestions" }} />
+      <Stack.Screen name="map" options={{ title: "Map" }} />
       <Stack.Screen name="place/[id]" options={{ title: "Details" }} />
     </Stack>
   );

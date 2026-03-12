@@ -1,0 +1,4 @@
+# No external dependencies; uses stdlib (json, urllib, logging).
+# Add below if you extend this function (e.g. supabase-py for direct DB upsert):
+# supabase>=2.0.0
+# requests>=2.28.0
