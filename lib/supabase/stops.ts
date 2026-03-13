@@ -150,9 +150,46 @@ function haversineMiles(
 const MMITM_PRIORITY_TYPES = new Set(["food", "coffee", "bar", "grocery"]);
 
 /**
+ * Convert radius (miles) to approximate degree deltas for a bounding box.
+ * 1° lat ≈ 69 miles; 1° lon ≈ 69 * cos(lat) miles.
+ */
+function radiusToBboxDegrees(
+  lat: number,
+  lon: number,
+  radiusMiles: number
+): { minLat: number; maxLat: number; minLon: number; maxLon: number } {
+  const buffer = 1.05; // small margin so we don't miss edge points
+  const latDelta = (radiusMiles / 69) * buffer;
+  const lonDelta =
+    (radiusMiles / (69 * Math.cos((lat * Math.PI) / 180))) * buffer;
+  return {
+    minLat: lat - latDelta,
+    maxLat: lat + latDelta,
+    minLon: lon - lonDelta,
+    maxLon: lon + lonDelta,
+  };
+}
+
+function rowToStop(row: any): Stop {
+  const rawTypes = normalizeTypes(row.types);
+  const known = rawTypes.filter(isStopType);
+  const unknown = rawTypes.filter((t) => !isStopType(t));
+  return {
+    id: row.id,
+    name: row.name,
+    lat: row.lat,
+    lon: row.lon,
+    hasWifi: !!row.has_wifi,
+    petFriendly: !!row.pet_friendly,
+    types: known,
+    unknownTypes: unknown.length ? unknown : undefined,
+  };
+}
+
+/**
  * Fetch stops within radiusMiles of (lat, lon).
- * Uses fetchAllStops + in-memory haversine filter.
- * Optional: filter to venue types (food, coffee, bar, grocery) for meet-in-the-middle.
+ * Uses a single server-side bounding-box query instead of fetchAllStops,
+ * then applies haversine + optional venue filter in memory.
  */
 export async function fetchStopsNear(
   lat: number,
@@ -160,16 +197,36 @@ export async function fetchStopsNear(
   radiusMiles: number,
   options?: { venueTypesOnly?: boolean }
 ): Promise<Stop[]> {
-  const all = await fetchAllStops();
-  let near = all.filter(
-    (s) => haversineMiles(lat, lon, s.lat, s.lon) <= radiusMiles
+  const { minLat, maxLat, minLon, maxLon } = radiusToBboxDegrees(
+    lat,
+    lon,
+    radiusMiles
   );
+
+  const { data, error } = await supabase
+    .from("stops")
+    .select("id, name, lat, lon, has_wifi, pet_friendly, types")
+    .gte("lat", minLat)
+    .lte("lat", maxLat)
+    .gte("lon", minLon)
+    .lte("lon", maxLon)
+    .order("name", { ascending: true })
+    .order("id", { ascending: true });
+
+  if (error) {
+    console.error("SUPABASE ERROR (fetchStopsNear):", error.message);
+    throw error;
+  }
+
+  const rows = (data ?? []) as any[];
+  let near = rows
+    .map(rowToStop)
+    .filter((s) => haversineMiles(lat, lon, s.lat, s.lon) <= radiusMiles);
 
   if (options?.venueTypesOnly) {
     near = near.filter((s) =>
       s.types.some((t) => MMITM_PRIORITY_TYPES.has(t))
     );
-    // Sort: food/coffee/bar first, then grocery
     const priority = (t: string) =>
       t === "food" || t === "coffee" || t === "bar" ? 0 : 1;
     near.sort((a, b) => {
