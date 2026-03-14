@@ -19,12 +19,26 @@ import { filterStops } from "../lib/stops/filterStops";
 import { fetchAllStops, fetchStopsNear } from "../lib/supabase/stops";
 import { SPACING } from "../lib/ui/spacing";
 import { FONT_SIZES } from "../lib/ui/typography";
+import { loadAllowedTypes } from "../utils/catalogStorage";
 import { loadSettingsFilters, SettingsFilters } from "../utils/settingsStorage";
 
-import { Stop } from "../lib/stops/types";
+import { Stop, StopType } from "../lib/stops/types";
+
+/** Map Create Party poiType to StopType[]. */
+function poiTypeToStopTypes(poiType?: string): StopType[] | undefined {
+  if (!poiType) return undefined;
+  const map: Record<string, StopType[]> = {
+    Cafe: ["coffee"],
+    Pub: ["bar"],
+    Restaurant: ["food"],
+    Park: ["park"],
+  };
+  return map[poiType];
+}
 
 export default function MapScreen() {
   const [filters, setFilters] = useState<SettingsFilters | null>(null);
+  const [allowedTypes, setAllowedTypes] = useState<Set<StopType> | null>(null);
   const [stops, setStops] = useState<Stop[]>([]);
   const [loading, setLoading] = useState(true);
   const [mapReady, setMapReady] = useState(false);
@@ -59,7 +73,11 @@ export default function MapScreen() {
       const load = async () => {
         setLoading(true);
         try {
-          const f = await loadSettingsFilters();
+          const [f, allowed] = await Promise.all([
+            loadSettingsFilters(),
+            loadAllowedTypes(),
+          ]);
+          const allowedSet = allowed && allowed.length > 0 ? new Set(allowed) : null;
           const sessionRaw = await AsyncStorage.getItem(MMITM_SESSION_KEY);
           const session: MmitmSession | null = sessionRaw
             ? JSON.parse(sessionRaw)
@@ -68,11 +86,14 @@ export default function MapScreen() {
           let s;
 
           if (session) {
+            const preferredTypes = poiTypeToStopTypes(session.poiType);
             s = await fetchStopsNear(
               session.center.lat,
               session.center.lon,
               session.radiusMiles,
-              { venueTypesOnly: true }
+              preferredTypes?.length
+                ? { preferredTypes }
+                : { venueTypesOnly: true }
             );
             if (isActive) setMmitmSession(session);
           } else {
@@ -82,6 +103,7 @@ export default function MapScreen() {
 
           if (isActive) {
             setFilters(f);
+            setAllowedTypes(allowedSet);
             setStops(s);
           }
         } catch (e) {
@@ -136,8 +158,8 @@ export default function MapScreen() {
 
   const filteredStops: Stop[] = useMemo(() => {
     if (!filters) return [];
-    return mmitmSession ? stops : filterStops(stops, filters);
-  }, [stops, filters, mmitmSession]);
+    return mmitmSession ? stops : filterStops(stops, filters, allowedTypes);
+  }, [stops, filters, mmitmSession, allowedTypes]);
 
   useEffect(() => {
     if (!stopId) return;

@@ -20,6 +20,7 @@ type Member = {
   id: string;
   name: string;
   address: string;
+  
 };
 
 const POI_TYPES = ["Cafe", "Pub", "Restaurant", "Park"];
@@ -67,6 +68,7 @@ export default function PartySetupScreen() {
         origins,
         center,
         radiusMiles: 10,
+        poiType: selectedType,
       };
       await AsyncStorage.setItem(MMITM_SESSION_KEY, JSON.stringify(session));
       if (destination === "results") {

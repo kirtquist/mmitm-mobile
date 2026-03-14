@@ -10,4 +10,5 @@ export type MmitmSession = {
   origins: MmitmOrigin[];
   center: { lat: number; lon: number };
   radiusMiles: number;
+  poiType?: string;  // Create Party: Cafe, Pub, Restaurant, Park
 };

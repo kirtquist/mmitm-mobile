@@ -21,7 +21,8 @@ Native map screen with POI clustering and meet-in-the-middle support. Uses `reac
 ## Data Flow
 
 - **fetchAllStops()** (`lib/supabase/stops.ts`) – paginated, returns all stops
-- **fetchStopsNear(lat, lon, radiusMiles, { venueTypesOnly? })** – stops within radius, optionally filtered to food/coffee/bar/grocery for mmitm
+- **fetchStopsNear(lat, lon, radiusMiles, { venueTypesOnly?, preferredTypes? })** – stops within radius; `preferredTypes` filters by Create Party POI type (Cafe→coffee, Pub→bar, Restaurant→food, Park→park)
+- **filterStops(stops, filters, allowedTypes?)** – applies Settings filters; optional `allowedTypes` from Catalog
 - Supercluster index built in‑memory from `filteredStops`; queried by viewport bbox/zoom on region change
 
 ## Native Map (`app/map.native.tsx`)
@@ -54,10 +55,10 @@ Native map screen with POI clustering and meet-in-the-middle support. Uses `reac
 2. Compute center: `geographicMidpoint(origins)` (`lib/map/midpoint.ts`)
 3. Persist session in AsyncStorage under `@mmitm/session`:
    ```ts
-   { origins: { lat, lon, label }[], center: { lat, lon }, radiusMiles }
+   { origins, center, radiusMiles, poiType?: "Cafe"|"Pub"|"Restaurant"|"Park" }
    ```
-4. Map screen: if session present → show origin markers (green), center marker (blue), POIs from `fetchStopsNear(center, radius, { venueTypesOnly: true })`
-5. Venue types: food, coffee, bar, grocery
+4. Map screen: if session present → show origin markers (green), center marker (blue), route polylines (OSRM), POIs from `fetchStopsNear(center, radius, { preferredTypes } or { venueTypesOnly: true })`
+5. `poiType` filters venues: Cafe→coffee, Pub→bar, Restaurant→food, Park→park
 
 To wire from index: after geocoding member addresses, call `geographicMidpoint(points)`, build the session object, `AsyncStorage.setItem(MMITM_SESSION_KEY, JSON.stringify(session))`, then `router.push('/map')`.
 

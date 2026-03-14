@@ -195,7 +195,7 @@ export async function fetchStopsNear(
   lat: number,
   lon: number,
   radiusMiles: number,
-  options?: { venueTypesOnly?: boolean }
+  options?: { venueTypesOnly?: boolean; preferredTypes?: StopType[] }
 ): Promise<Stop[]> {
   const { minLat, maxLat, minLon, maxLon } = radiusToBboxDegrees(
     lat,
@@ -223,7 +223,20 @@ export async function fetchStopsNear(
     .map(rowToStop)
     .filter((s) => haversineMiles(lat, lon, s.lat, s.lon) <= radiusMiles);
 
-  if (options?.venueTypesOnly) {
+  if (options?.preferredTypes && options.preferredTypes.length > 0) {
+    const preferredSet = new Set(options.preferredTypes);
+    near = near.filter((s) =>
+      s.types.some((t) => preferredSet.has(t))
+    );
+    const priority = (t: string) =>
+      t === "food" || t === "coffee" || t === "bar" ? 0 : 1;
+    near.sort((a, b) => {
+      const pa = Math.min(...a.types.map(priority));
+      const pb = Math.min(...b.types.map(priority));
+      if (pa !== pb) return pa - pb;
+      return a.name.localeCompare(b.name);
+    });
+  } else if (options?.venueTypesOnly) {
     near = near.filter((s) =>
       s.types.some((t) => MMITM_PRIORITY_TYPES.has(t))
     );

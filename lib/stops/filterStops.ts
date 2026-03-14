@@ -5,12 +5,21 @@
 // IMPORTANT:
 // - This operates ONLY on known StopType values (stop.types).
 // - Unknown tags (stop.unknownTypes) never influence Settings filtering.
+// - If allowedTypes is provided, a stop must have at least one type in that set.
 
 import { SettingsFilters } from "../../utils/settingsStorage";
 import { Stop, StopType } from "./types";
 
-export function filterStops(stops: Stop[], filters: SettingsFilters): Stop[] {
+export function filterStops(
+  stops: Stop[],
+  filters: SettingsFilters,
+  allowedTypes?: Set<StopType> | null
+): Stop[] {
   return stops.filter((stop) => {
+    if (allowedTypes && allowedTypes.size > 0) {
+      const hasAllowedType = stop.types.some((t) => allowedTypes.has(t));
+      if (!hasAllowedType) return false;
+    }
     if (filters.wifiRequired && !stop.hasWifi) return false;
     if (filters.petsOnly && !stop.petFriendly) return false;
 

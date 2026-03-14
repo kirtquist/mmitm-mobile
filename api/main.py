@@ -26,6 +26,11 @@ TAG_TO_TYPE = {
     ("shop", "supermarket"): "grocery",
     ("amenity", "restaurant"): "food",
     ("amenity", "fast_food"): "food",
+    ("amenity", "cafe"): "coffee",
+    ("amenity", "pub"): "bar",
+    ("amenity", "bar"): "bar",
+    ("amenity", "biergarten"): "bar",
+    ("shop", "coffee"): "coffee",
     ("leisure", "dog_park"): "dogpark",
     ("shop", "gas"): "propane",  # propane often at gas stations
     ("amenity", "compressed_air"): "propane",
@@ -36,6 +41,11 @@ TAG_TO_TYPE = {
     ("tourism", "viewpoint"): "attraction",
 }
 
+def _is_explore(request) -> bool:
+    """True if explore=1, true, yes in query params."""
+    val = (request.args.get("explore") or "").lower()
+    return val in ("1", "true", "yes")
+    
 def _get_city(tags: dict[str, str]) -> str|None:
     """Get city from OSM tags."""
     city = tags.get("addr:city")
@@ -114,6 +124,11 @@ def _build_overpass_query(south: float, west: float, north: float, east: float) 
   node["shop"="supermarket"]{bbox};
   node["amenity"="restaurant"]{bbox};
   node["amenity"="fast_food"]{bbox};
+  node["amenity"="cafe"]{bbox};
+  node["amenity"="pub"]{bbox};
+  node["amenity"="bar"]{bbox};
+  node["amenity"="biergarten"]{bbox};
+  node["shop"="coffee"]{bbox};
   node["leisure"="dog_park"]{bbox};
   node["amenity"="car_repair"]{bbox};
   node["shop"="car_repair"]{bbox};
@@ -124,6 +139,11 @@ def _build_overpass_query(south: float, west: float, north: float, east: float) 
   way["shop"="supermarket"]{bbox};
   way["amenity"="restaurant"]{bbox};
   way["amenity"="fast_food"]{bbox};
+  way["amenity"="cafe"]{bbox};
+  way["amenity"="pub"]{bbox};
+  way["amenity"="bar"]{bbox};
+  way["amenity"="biergarten"]{bbox};
+  way["shop"="coffee"]{bbox};
   way["leisure"="dog_park"]{bbox};
   way["amenity"="car_repair"]{bbox};
   way["shop"="car_repair"]{bbox};
@@ -131,6 +151,23 @@ def _build_overpass_query(south: float, west: float, north: float, east: float) 
 );
 out center;
 """
+
+def _build_overpass_query_explore(south: float, west: float, north: float, east: float) -> str:
+    """Overpass QL: ALL amenity, shop, leisure POIs (no value filter)."""
+    bbox = f"({south},{west},{north},{east})"
+    return f"""
+[out:json][timeout:{OVERPASS_TIMEOUT}];
+(
+  node["amenity"]{bbox};
+  node["shop"]{bbox};
+  node["leisure"]{bbox};
+  way["amenity"]{bbox};
+  way["shop"]{bbox};
+  way["leisure"]{bbox};
+);
+out center;
+"""
+
 
 
 def _query_overpass(south: float, west: float, north: float, east: float) -> dict:
@@ -146,6 +183,18 @@ def _query_overpass(south: float, west: float, north: float, east: float) -> dic
     with urllib.request.urlopen(req, timeout=OVERPASS_TIMEOUT + 10) as resp:
         return json.loads(resp.read().decode())
 
+def _query_overpass_explore(south: float, west: float, north: float, east: float) -> dict:
+    """Fetch from Overpass using explore (broad) query."""
+    q = _build_overpass_query_explore(south, west, north, east)
+    data = q.encode("utf-8")
+    req = urllib.request.Request(
+        OVERPASS_URL,
+        data=data,
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=OVERPASS_TIMEOUT + 10) as resp:
+        return json.loads(resp.read().decode())
 
 def _transform_elements(elements: list[dict]) -> list[dict]:
     """Convert Overpass elements to app stops schema."""
@@ -181,6 +230,36 @@ def _transform_elements(elements: list[dict]) -> list[dict]:
 
     return stops
 
+def _transform_explore(elements: list[dict]) -> list[dict]:
+    """Convert Overpass elements to explore format: lat, lon, name, tags."""
+    result = []
+    seen = set()
+
+    for el in elements:
+        tags = el.get("tags") or {}
+        center = _extract_center(el)
+        if not center:
+            continue
+
+        lat, lon = center
+        name = _derive_name(tags, f"{el.get('type','')}-{el.get('id','')}")
+        key = (round(lat, 6), round(lon, 6), name)
+        if key in seen:
+            continue
+        seen.add(key)
+
+        # Include relevant OSM keys for inspection
+        include_keys = ("amenity", "shop", "leisure", "name", "brand", "operator", "tourism", "highway")
+        tags_subset = {k: v for k, v in tags.items() if k in include_keys}
+
+        result.append({
+            "lat": lat,
+            "lon": lon,
+            "name": name,
+            "tags": tags_subset,
+        })
+
+    return result
 
 def fetch_osm_stops(request) -> tuple[Any, int]:
     """
@@ -221,6 +300,11 @@ def fetch_osm_stops(request) -> tuple[Any, int]:
         min_lat, min_lon, max_lat, max_lon = (float(x) for x in bbox)
         min_lat, min_lon, max_lat, max_lon = _clamp_bbox(min_lat, min_lon, max_lat, max_lon)
 
+        if _is_explore(request):
+            data = _query_overpass_explore(min_lat, min_lon, max_lat, max_lon)
+            elements = data.get("elements", [])
+            explore_list = _transform_explore(elements)
+            return (json.dumps({"explore": explore_list, "count": len(explore_list)}), 200, headers)
 
         data = _query_overpass(min_lat, min_lon, max_lat, max_lon)
         elements = data.get("elements", [])

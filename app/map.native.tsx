@@ -18,7 +18,7 @@ import {
   View,
 } from "react-native";
 import Supercluster from "supercluster";
-import MapView, { Marker, Region } from "react-native-maps";
+import MapView, { Marker, Polyline, Region } from "react-native-maps";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { ColoredDot } from "../components/ColoredDot";
@@ -30,8 +30,9 @@ import { MMITM_SESSION_KEY, type MmitmSession } from "../lib/map/mmitmSession";
 import { loadMapRegion, saveMapRegion } from "../lib/map/mapRegionStorage";
 import { filterStops } from "../lib/stops/filterStops";
 import { PIN_LEGEND_ROWS } from "../lib/stops/pinStyles";
-import { Stop } from "../lib/stops/types";
+import { Stop, StopType } from "../lib/stops/types";
 import { getPinColor } from "../lib/stops/utils";
+import { fetchOsrmRoute } from "../lib/api/fetchOsrmRoute";
 import { fetchOsmStops, regionToApiBbox } from "../lib/api/fetchOsmStops";
 import { fetchAllStops, fetchStopsNear } from "../lib/supabase/stops";
 import { DOT_SIZES } from "../lib/ui/dotSizes";
@@ -39,6 +40,18 @@ import { SPACING } from "../lib/ui/spacing";
 import { FONT_SIZES } from "../lib/ui/typography";
 
 const DEFAULT_RADIUS_MILES = 10;
+
+/** Map Create Party poiType to StopType[]. */
+function poiTypeToStopTypes(poiType?: string): StopType[] | undefined {
+  if (!poiType) return undefined;
+  const map: Record<string, StopType[]> = {
+    Cafe: ["coffee"],
+    Pub: ["bar"],
+    Restaurant: ["food"],
+    Park: ["park"],
+  };
+  return map[poiType];
+}
 
 // ---------------------------------------------------------------------------
 // Supercluster
@@ -74,6 +87,7 @@ function regionToZoom(r: Region): number {
 
 const CENTER_MARKER_COLOR = "#007AFF";
 const ORIGIN_MARKER_COLOR = "#34C759";
+const ROUTE_POLYLINE_COLOR = "rgba(0, 122, 255, 0.6)";
 
 export default function MapScreen() {
   const colorScheme = useColorScheme();
@@ -83,6 +97,7 @@ export default function MapScreen() {
   const router = useRouter();
 
   const [filters, setFilters] = useState<any>(null);
+  const [allowedTypes, setAllowedTypes] = useState<Set<StopType> | null>(null);
   const [stops, setStops] = useState<Stop[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedStop, setSelectedStop] = useState<Stop | null>(null);
@@ -91,6 +106,9 @@ export default function MapScreen() {
   const [mmitmSession, setMmitmSession] = useState<MmitmSession | null>(null);
   const [debouncedRegion, setDebouncedRegion] = useState<Region | null>(null);
   const [loadingOsm, setLoadingOsm] = useState(false);
+  const [routePolylines, setRoutePolylines] = useState<
+    { key: string; coords: { latitude: number; longitude: number }[] }[]
+  >([]);
 
   const clusterIndex = useRef<Supercluster<{ stopId: string }> | null>(null);
   const [clusterVersion, setClusterVersion] = useState(0);
@@ -119,9 +137,15 @@ export default function MapScreen() {
       const load = async () => {
         setLoading(true);
         try {
-          const loadFilters = (await import("../utils/settingsStorage"))
-            .loadSettingsFilters;
-          const f = await loadFilters();
+          const [loadFilters, loadAllowedTypes] = await Promise.all([
+            (await import("../utils/settingsStorage")).loadSettingsFilters,
+            (await import("../utils/catalogStorage")).loadAllowedTypes,
+          ]);
+          const [f, allowed] = await Promise.all([
+            loadFilters(),
+            loadAllowedTypes(),
+          ]);
+          const allowedSet = allowed && allowed.length > 0 ? new Set(allowed) : null;
           const sessionRaw = await AsyncStorage.getItem(MMITM_SESSION_KEY);
           const session: MmitmSession | null = sessionRaw
             ? JSON.parse(sessionRaw)
@@ -130,11 +154,14 @@ export default function MapScreen() {
           let s: Stop[];
 
           if (session) {
+            const preferredTypes = poiTypeToStopTypes(session.poiType);
             s = await fetchStopsNear(
               session.center.lat,
               session.center.lon,
               session.radiusMiles,
-              { venueTypesOnly: true }
+              preferredTypes?.length
+                ? { preferredTypes }
+                : { venueTypesOnly: true }
             );
             if (isActive) setMmitmSession(session);
           } else {
@@ -145,6 +172,7 @@ export default function MapScreen() {
           if (!isActive) return;
 
           setFilters(f);
+          setAllowedTypes(allowedSet);
           setStops(s);
 
           if (session) {
@@ -179,8 +207,8 @@ export default function MapScreen() {
 
   const filteredStops: Stop[] = useMemo(() => {
     if (!filters) return [];
-    return mmitmSession ? stops : filterStops(stops, filters);
-  }, [stops, filters, mmitmSession]);
+    return mmitmSession ? stops : filterStops(stops, filters, allowedTypes);
+  }, [stops, filters, mmitmSession, allowedTypes]);
 
   useEffect(() => {
     let cancelled = false;
@@ -266,9 +294,41 @@ export default function MapScreen() {
   const handleClearMmitm = async () => {
     await AsyncStorage.removeItem(MMITM_SESSION_KEY);
     setMmitmSession(null);
+    setRoutePolylines([]);
     const s = await fetchAllStops();
     setStops(s);
   };
+
+  useEffect(() => {
+    if (!mmitmSession || !process.env.EXPO_PUBLIC_OSRM_URL?.trim()) {
+      setRoutePolylines([]);
+      return;
+    }
+    let cancelled = false;
+    const fetchRoutes = async () => {
+      const polylines: { key: string; coords: { latitude: number; longitude: number }[] }[] = [];
+      for (let i = 0; i < mmitmSession.origins.length; i++) {
+        if (cancelled) return;
+        const result = await fetchOsrmRoute([
+          mmitmSession.origins[i],
+          mmitmSession.center,
+        ]);
+        if (cancelled || !result) continue;
+        polylines.push({
+          key: `route-${i}`,
+          coords: result.polyline.map((p) => ({
+            latitude: p.lat,
+            longitude: p.lon,
+          })),
+        });
+      }
+      if (!cancelled) setRoutePolylines(polylines);
+    };
+    fetchRoutes();
+    return () => {
+      cancelled = true;
+    };
+  }, [mmitmSession]);
 
   if (loading || !filters) {
     return (
@@ -372,6 +432,14 @@ export default function MapScreen() {
           setSelectedStop(null);
         }}
       >
+        {routePolylines.map((r) => (
+          <Polyline
+            key={r.key}
+            coordinates={r.coords}
+            strokeColor={ROUTE_POLYLINE_COLOR}
+            strokeWidth={3}
+          />
+        ))}
         {mmitmSession?.origins.map((o, i) => (
           <Marker
             key={`origin-${i}`}
@@ -440,8 +508,29 @@ export default function MapScreen() {
           >
             Meet in the Middle · {filteredStops.length} venues
           </Text>
-          <Pressable
-            onPress={handleClearMmitm}
+          <View style={{ flexDirection: "row", alignItems: "center", gap: SPACING.sm }}>
+            {filteredStops.length === 0 && (
+              <Pressable
+                onPress={handleLoadPoisHere}
+                disabled={loadingOsm}
+                style={{
+                  paddingHorizontal: SPACING.sm + 2,
+                  paddingVertical: SPACING.xs + 2,
+                  borderRadius: SPACING.borderRadius,
+                  backgroundColor: loadingOsm
+                    ? "rgba(255,255,255,0.1)"
+                    : "rgba(255,255,255,0.2)",
+                }}
+              >
+                <Text
+                  style={{ color: "#ffffff", fontSize: FONT_SIZES.xs, fontWeight: "600" }}
+                >
+                  {loadingOsm ? "Loading…" : "Load POIs here"}
+                </Text>
+              </Pressable>
+            )}
+            <Pressable
+              onPress={handleClearMmitm}
             style={{
               paddingHorizontal: SPACING.sm + 2,
               paddingVertical: SPACING.xs + 2,
@@ -455,6 +544,7 @@ export default function MapScreen() {
               Clear
             </Text>
           </Pressable>
+          </View>
         </View>
       )}
 

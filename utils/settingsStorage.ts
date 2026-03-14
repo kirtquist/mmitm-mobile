@@ -4,8 +4,26 @@
 // Defaults to permissive (include all) so users see stops until they narrow filters.
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import type { StopType } from "../lib/stops/types";
 
 const SETTINGS_KEY = "@mmitm/settings_filters";
+
+/** Map StopType to the SettingsFilters include key. */
+export const STOP_TYPE_TO_FILTER_KEY: Record<StopType, keyof SettingsFilters> = {
+  weigh: "includeWeigh",
+  service: "includeService",
+  grocery: "includeGrocery",
+  gas: "includeGas",
+  food: "includeFood",
+  coffee: "includeCoffee",
+  bar: "includeBar",
+  dogpark: "includeDogPark",
+  propane: "includePropane",
+  dump: "includeDump",
+  rest: "includeRest",
+  park: "includePark",
+  attraction: "includeAttractions",
+};
 
 export type SettingsFilters = {
   wifiRequired: boolean;
@@ -52,4 +70,8 @@ export async function loadSettingsFilters(): Promise<SettingsFilters> {
   } catch {
     return { ...DEFAULTS };
   }
+}
+
+export async function saveSettingsFilters(filters: SettingsFilters): Promise<void> {
+  await AsyncStorage.setItem(SETTINGS_KEY, JSON.stringify(filters));
 }
