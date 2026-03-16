@@ -9,16 +9,16 @@
 // - Unknown strings are preserved separately for visibility/debugging.
 
 export const ALL_STOP_TYPES = [
-  "weigh",
-  "service",
+  // "weigh",
+  // "service",
   "grocery",
   "gas",
   "food",
   "coffee",
   "bar",
   "dogpark",
-  "propane",
-  "dump",
+  // "propane",
+  // "dump",
   "rest",
   "park",
   "attraction",

@@ -17,12 +17,16 @@ OVERPASS_URL = "https://overpass-api.de/api/interpreter"
 OVERPASS_TIMEOUT = 90
 MAX_LAT_SPAN = 0.5  # ~35mi at mid-latitudes
 MAX_LON_SPAN = 0.5
+NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
 
 # Maps OSM tags to app stop types (matches tools/import-osm-stops.ts)
 TAG_TO_TYPE = {
     ("amenity", "fuel"): "gas",
     ("highway", "rest_area"): "rest",
     ("tourism", "camp_site"): "park",
+    ("leisure", "nature_reserve"): "park",
+    ("leisure", "garden"): "park",
+    ("leisure", "park"): "park",
     ("shop", "supermarket"): "grocery",
     ("amenity", "restaurant"): "food",
     ("amenity", "fast_food"): "food",
@@ -45,8 +49,34 @@ def _is_explore(request) -> bool:
     """True if explore=1, true, yes in query params."""
     val = (request.args.get("explore") or "").lower()
     return val in ("1", "true", "yes")
-    
-def _get_city(tags: dict[str, str]) -> str|None:
+
+
+def _query_nominatim(q: str) -> dict | None:
+    """Proxy Nominatim geocoding. Returns first result or None."""
+    q = (q or "").strip()
+    if not q:
+        return None
+    params = urllib.parse.urlencode({"q": q, "format": "json", "limit": 1})
+    url = f"{NOMINATIM_URL}?{params}"
+    req = urllib.request.Request(url, headers={"User-Agent": "MeetInTheMiddle/1.0"})
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        data = json.loads(resp.read().decode())
+    first = data[0] if isinstance(data, list) and data else None
+    if not first:
+        return None
+    lat = first.get("lat")
+    lon = first.get("lon")
+    display_name = first.get("display_name") or q
+    if lat is None or lon is None:
+        return None
+    return {
+        "lat": float(lat),
+        "lon": float(lon),
+        "display_name": display_name,
+    }
+
+
+def _get_city(tags: dict[str, str]) -> str | None:
     """Get city from OSM tags."""
     city = tags.get("addr:city")
     state = tags.get("addr:state")
@@ -130,8 +160,9 @@ def _build_overpass_query(south: float, west: float, north: float, east: float) 
   node["amenity"="biergarten"]{bbox};
   node["shop"="coffee"]{bbox};
   node["leisure"="dog_park"]{bbox};
-  node["amenity"="car_repair"]{bbox};
-  node["shop"="car_repair"]{bbox};
+  node["leisure"="park"]{bbox};
+  node["leisure"="nature_reserve"]{bbox};
+  node["leisure"="garden"]{bbox};
   node["tourism"="attraction"]{bbox};
   way["amenity"="fuel"]{bbox};
   way["highway"="rest_area"]{bbox};
@@ -145,8 +176,8 @@ def _build_overpass_query(south: float, west: float, north: float, east: float) 
   way["amenity"="biergarten"]{bbox};
   way["shop"="coffee"]{bbox};
   way["leisure"="dog_park"]{bbox};
-  way["amenity"="car_repair"]{bbox};
-  way["shop"="car_repair"]{bbox};
+  way["leisure"="nature_reserve"]{bbox};
+  way["leisure"="park"]{bbox};
   way["tourism"="attraction"]{bbox};
 );
 out center;
@@ -279,6 +310,18 @@ def fetch_osm_stops(request) -> tuple[Any, int]:
     headers = {"Access-Control-Allow-Origin": "*", "Content-Type": "application/json"}
 
     try:
+        # Geocode mode: ?q=... or body { "q": "..." }
+        q = request.args.get("q")
+        if q is None and request.method == "POST" and request.is_json:
+            body = request.get_json() or {}
+            q = body.get("q")
+        if q is not None and str(q).strip():
+            result = _query_nominatim(str(q).strip())
+            if result:
+                return (json.dumps(result), 200, headers)
+            return (json.dumps({"result": None}), 200, headers)
+
+        # OSM/bbox mode
         bbox = None
         if request.method == "POST" and request.is_json:
             body = request.get_json() or {}

@@ -51,7 +51,7 @@ Native map screen with POI clustering and meet-in-the-middle support. Uses `reac
 
 ## Meet-in-the-Middle
 
-1. Geocode member addresses via Nominatim: `lib/api/geocodeNominatim.ts` (`geocodeMembers`, `geocodeAddress`) – OSM Nominatim, 1 req/sec
+1. Geocode member addresses: `lib/api/geocodeNominatim.ts` (`geocodeMembers`, `geocodeAddress`). Web uses GCP Cloud Function proxy (`?q=`); native calls Nominatim directly. Nominatim rate limit: 1 req/sec.
 2. Compute center: `geographicMidpoint(origins)` (`lib/map/midpoint.ts`)
 3. Persist session in AsyncStorage under `@mmitm/session`:
    ```ts
@@ -70,3 +70,13 @@ To wire from index: after geocoding member addresses, call `geographicMidpoint(p
 
 - `lib/stops/types.ts` – Stop, StopType (includes `coffee`, `bar`)
 - `lib/stops/catalog.ts` – StopType → visual category mapping
+
+## Troubleshooting
+
+### Stops not visible
+
+The app loads from **Supabase**, not directly from the Cloud Function. Stops appear only if: (1) Supabase has data (run `tools/import-from-api.ts` with the relevant bbox), or (2) you use "Load POIs here" to merge OSM POIs into session state (in-memory only). MMITM session uses `fetchStopsNear(center, radius)`; browse mode uses `fetchAllStops()`.
+
+### Map crashes on iOS (Expo Go)
+
+Random native crashes with no JS console errors are common with `react-native-maps` in Expo Go. Likely causes: too many Markers, `tracksViewChanges` on many markers, or memory pressure. Mitigations: cap rendered markers (e.g. 200–300), use `tracksViewChanges={false}` except for the selected marker, or run a dev build (`npx expo run:ios`) instead of Expo Go. Check Xcode/Console.app device logs for native crash traces.

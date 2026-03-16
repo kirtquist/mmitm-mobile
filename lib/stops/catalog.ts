@@ -27,7 +27,7 @@ export type StopTypeMeta = Readonly<{
 
 export const STOP_TYPE_ORDER: readonly StopType[] = [
   "gas",
-  "propane",
+  // "propane",
   "grocery",
   "food",
   "coffee",
@@ -35,15 +35,15 @@ export const STOP_TYPE_ORDER: readonly StopType[] = [
   "dogpark",
   "park",
   "rest",
-  "dump",
-  "service",
-  "weigh",
+  // "dump",
+  // "service",
+  // "weigh",
   "attraction",
 ] as const;
 
 export const STOP_TYPE_META: Readonly<Record<StopType, StopTypeMeta>> = {
   gas: { label: "Fuel & Gas", visual: "gas" },
-  propane: { label: "Propane", visual: "gas" },
+  // propane: { label: "Propane", visual: "gas" },
 
   grocery: { label: "Groceries", visual: "food" },
   food: { label: "Food", visual: "food" },
@@ -54,10 +54,10 @@ export const STOP_TYPE_META: Readonly<Record<StopType, StopTypeMeta>> = {
   park: { label: "Parks", visual: "park" },
 
   rest: { label: "Rest Areas", visual: "rest" },
-  dump: { label: "Dump Stations", visual: "rest" },
+  // dump: { label: "Dump Stations", visual: "rest" },
 
-  service: { label: "Repair Shops", visual: "weigh" },
-  weigh: { label: "Weigh Stations", visual: "weigh" },
+  // service: { label: "Repair Shops", visual: "weigh" },
+  // weigh: { label: "Weigh Stations", visual: "weigh" },
 
   attraction: { label: "Attractions", visual: "attraction" },
 } as const;

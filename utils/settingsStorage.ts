@@ -10,16 +10,16 @@ const SETTINGS_KEY = "@mmitm/settings_filters";
 
 /** Map StopType to the SettingsFilters include key. */
 export const STOP_TYPE_TO_FILTER_KEY: Record<StopType, keyof SettingsFilters> = {
-  weigh: "includeWeigh",
-  service: "includeService",
+  // weigh: "includeWeigh",
+  // service: "includeService",
   grocery: "includeGrocery",
   gas: "includeGas",
   food: "includeFood",
   coffee: "includeCoffee",
   bar: "includeBar",
   dogpark: "includeDogPark",
-  propane: "includePropane",
-  dump: "includeDump",
+  // propane: "includePropane",
+  // dump: "includeDump",
   rest: "includeRest",
   park: "includePark",
   attraction: "includeAttractions",
@@ -28,16 +28,16 @@ export const STOP_TYPE_TO_FILTER_KEY: Record<StopType, keyof SettingsFilters> = 
 export type SettingsFilters = {
   wifiRequired: boolean;
   petsOnly: boolean;
-  includeWeigh: boolean;
-  includeService: boolean;
+  // includeWeigh: boolean;
+  // includeService: boolean;
   includeGrocery: boolean;
   includeGas: boolean;
   includeFood: boolean;
   includeCoffee: boolean;
   includeBar: boolean;
   includeDogPark: boolean;
-  includePropane: boolean;
-  includeDump: boolean;
+  // includePropane: boolean;
+  // includeDump: boolean;
   includeRest: boolean;
   includePark: boolean;
   includeAttractions: boolean;
@@ -46,16 +46,16 @@ export type SettingsFilters = {
 const DEFAULTS: SettingsFilters = {
   wifiRequired: false,
   petsOnly: false,
-  includeWeigh: true,
-  includeService: true,
+  // includeWeigh: true,
+  // includeService: true,
   includeGrocery: true,
   includeGas: true,
   includeFood: true,
   includeCoffee: true,
   includeBar: true,
   includeDogPark: true,
-  includePropane: true,
-  includeDump: true,
+  // includePropane: true,
+  // includeDump: true,
   includeRest: true,
   includePark: true,
   includeAttractions: true,

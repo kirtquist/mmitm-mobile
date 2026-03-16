@@ -1,0 +1,32 @@
+---
+description: Check documentation (*.md) for context, app info, decisions, and todos
+alwaysApply: true
+---
+
+# Documentation Context
+
+Before implementing features or making significant changes, check the project's documentation files for context, app info, decisions, and todos.
+
+## Key documentation
+
+| File | Purpose |
+|------|---------|
+| `README.md` | Project overview, setup, links to other docs |
+| `docs/APPLICATION.md` | App features, screens, data flow, env vars |
+| `docs/MAP_SCREEN.md` | Map data flow, OSM import, MMITM behavior |
+| `docs/OSRM_SETUP.md` | OSRM routing setup |
+| `api/README.md` | API / Cloud Function details |
+| `FUTURE.md` | Deferred scope, todos, decisions to revisit |
+
+## When to consult docs
+
+- **New features** – Check APPLICATION.md and FUTURE.md for existing decisions and deferred scope
+- **Map / POI work** – See docs/MAP_SCREEN.md for data flow and pin styles
+- **API changes** – See api/README.md and APPLICATION.md data flow
+- **Settings, Catalog, filters** – APPLICATION.md describes behavior; lib/stops/catalog.ts for types
+
+## Todo and decision sources
+
+- `FUTURE.md` – Items to revisit (explore/catalog from OSM, auth, bbox options)
+- Inline comments in code – Feature-specific notes
+- docs/*.md – Architecture and flow decisions

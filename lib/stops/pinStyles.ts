@@ -15,8 +15,9 @@ export const PIN_STYLES = {
   gas:        { color: "#e67e22", label: "Gas / Propane" },
   food:       { color: "#e74c3c", label: "Food / Grocery" },
   park:       { color: "#27ae60", label: "Parks / Dog Parks" },
-  rest:       { color: "#95a5a6", label: "Rest Areas / Dump Stations" },
-  weigh:      { color: "#9b59b6", label: "Repair Shop / Weigh Stations" },
+  pub:        { color: "#95a5a6", label: "Pubs / Bars" },
+  rest:       { color: "#95a5a6", label: "Rest Areas" },
+  // weigh:      { color: "#9b59b6", label: "Repair Shop / Weigh Stations" },
   attraction: { color: "#2980b9", label: "Attractions" },
   other:      { color: "#34495e", label: "Other Stops" },
 } as const;
@@ -28,8 +29,9 @@ export const PIN_LEGEND_ORDER: readonly StopVisualCategory[] = [
   "gas",
   "food",
   "park",
+  "pub",
   "rest",
-  "weigh",
+  // "weigh",
   "attraction",
   "other",
 ] as const;
