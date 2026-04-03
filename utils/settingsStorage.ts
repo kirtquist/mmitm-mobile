@@ -4,6 +4,10 @@
 // Defaults to permissive (include all) so users see stops until they narrow filters.
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import {
+  DEFAULT_MMITM_RADIUS_MILES,
+  normalizeMmitmRadiusMiles,
+} from "../lib/map/mmitmSession";
 import type { StopType } from "../lib/stops/types";
 
 const SETTINGS_KEY = "@mmitm/settings_filters";
@@ -28,6 +32,7 @@ export const STOP_TYPE_TO_FILTER_KEY: Record<StopType, keyof SettingsFilters> = 
 export type SettingsFilters = {
   wifiRequired: boolean;
   petsOnly: boolean;
+  mmitmRadiusMiles: number;
   // includeWeigh: boolean;
   // includeService: boolean;
   includeGrocery: boolean;
@@ -46,6 +51,7 @@ export type SettingsFilters = {
 const DEFAULTS: SettingsFilters = {
   wifiRequired: false,
   petsOnly: false,
+  mmitmRadiusMiles: DEFAULT_MMITM_RADIUS_MILES,
   // includeWeigh: true,
   // includeService: true,
   includeGrocery: true,
@@ -66,7 +72,13 @@ export async function loadSettingsFilters(): Promise<SettingsFilters> {
     const raw = await AsyncStorage.getItem(SETTINGS_KEY);
     if (!raw) return { ...DEFAULTS };
     const parsed = JSON.parse(raw) as Partial<SettingsFilters>;
-    return { ...DEFAULTS, ...parsed };
+    return {
+      ...DEFAULTS,
+      ...parsed,
+      mmitmRadiusMiles: normalizeMmitmRadiusMiles(
+        parsed.mmitmRadiusMiles ?? DEFAULTS.mmitmRadiusMiles
+      ),
+    };
   } catch {
     return { ...DEFAULTS };
   }

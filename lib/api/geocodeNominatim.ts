@@ -7,6 +7,7 @@
 import { Platform } from "react-native";
 
 const NOMINATIM_URL = "https://nominatim.openstreetmap.org/search";
+const NOMINATIM_REVERSE_URL = "https://nominatim.openstreetmap.org/reverse";
 const RATE_LIMIT_MS = 1100;
 
 const DEFAULT_GEOCODE_API_URL =
@@ -23,6 +24,10 @@ export type GeocodedResult = {
 };
 
 type GeocodeApiResponse =
+  | { lat: number; lon: number; display_name: string }
+  | { result: null };
+
+type ReverseGeocodeApiResponse =
   | { lat: number; lon: number; display_name: string }
   | { result: null };
 
@@ -95,6 +100,81 @@ export async function geocodeAddress(query: string): Promise<GeocodedResult | nu
     return geocodeAddressViaApi(query);
   }
   return geocodeAddressNominatim(query);
+}
+
+async function reverseGeocodeViaApi(
+  lat: number,
+  lon: number
+): Promise<GeocodedResult | null> {
+  const baseUrl =
+    (typeof process !== "undefined" && process.env?.EXPO_PUBLIC_OSM_IMPORT_API_URL) ||
+    DEFAULT_GEOCODE_API_URL;
+  const url = `${baseUrl}?lat=${encodeURIComponent(String(lat))}&lon=${encodeURIComponent(
+    String(lon)
+  )}`;
+
+  const res = await fetch(url);
+  if (!res.ok) return null;
+
+  const data = (await res.json()) as ReverseGeocodeApiResponse;
+  if ("result" in data && data.result === null) return null;
+  if (!("display_name" in data)) return null;
+
+  const resultLat = Number(data.lat ?? lat);
+  const resultLon = Number(data.lon ?? lon);
+  if (isNaN(resultLat) || isNaN(resultLon)) return null;
+
+  return {
+    lat: resultLat,
+    lon: resultLon,
+    displayName: data.display_name,
+  };
+}
+
+async function reverseGeocodeNominatim(
+  lat: number,
+  lon: number
+): Promise<GeocodedResult | null> {
+  const url = `${NOMINATIM_REVERSE_URL}?lat=${encodeURIComponent(
+    String(lat)
+  )}&lon=${encodeURIComponent(String(lon))}&format=jsonv2&zoom=18`;
+
+  const res = await fetch(url, {
+    headers: { "User-Agent": "MeetInTheMiddle/1.0" },
+  });
+
+  if (!res.ok) return null;
+
+  const data = (await res.json()) as {
+    lat?: string;
+    lon?: string;
+    display_name?: string;
+  };
+  if (!data?.display_name) return null;
+
+  const resultLat = parseFloat(data.lat ?? String(lat));
+  const resultLon = parseFloat(data.lon ?? String(lon));
+  if (isNaN(resultLat) || isNaN(resultLon)) return null;
+
+  return {
+    lat: resultLat,
+    lon: resultLon,
+    displayName: data.display_name,
+  };
+}
+
+/**
+ * Reverse geocode a lat/lon pair into a displayable address label.
+ * Uses API proxy on web (CORS workaround), direct Nominatim on native.
+ */
+export async function reverseGeocode(
+  lat: number,
+  lon: number
+): Promise<GeocodedResult | null> {
+  if (Platform.OS === "web") {
+    return reverseGeocodeViaApi(lat, lon);
+  }
+  return reverseGeocodeNominatim(lat, lon);
 }
 
 export type GeocodedOrigin = { lat: number; lon: number; label: string };

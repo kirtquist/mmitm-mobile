@@ -48,13 +48,18 @@ gcloud functions deploy fetch_osm_stops \
 ```
 ```powershell
 cd api
-gcloud functions deploy fetch_osm_stops --gen2 --runtime=python312 --region=us-west1 --source=. --entry-point=fetch_osm_stops --trigger-http --allow-unauthenticated --timeout=120s
+set project=edgeshop-2026
+gcloud functions deploy fetch_osm_stops --gen2 --runtime=python312 --region=us-west1 --source=. --entry-point=fetch_osm_stops --trigger-http --allow-unauthenticated --timeout=120s --project=$project
 ```
 For authenticated-only access, use `--no-allow-unauthenticated` and configure IAM.
 
-## Geocode
+## Geocode and Reverse Geocode
 
-Proxies Nominatim geocoding for web (avoids CORS). Same function, routed by `q`:
+Proxies Nominatim lookups for web (avoids CORS). Same function, routed by query shape.
+
+### Forward geocode
+
+Use `q` to convert an address/search string to coordinates:
 
 **GET** or **POST** with `q`:
 ```
@@ -69,7 +74,28 @@ or POST body: `{ "q": "98642" }`
 
 **Response** (no result): `{ "result": null }`
 
-The app uses this on web; native calls Nominatim directly (no CORS). Uses `EXPO_PUBLIC_OSM_IMPORT_API_URL` as base URL.
+### Reverse geocode
+
+Use `lat` + `lon` to convert coordinates to a display address:
+
+**GET** or **POST** with `lat` and `lon`:
+```
+?lat=45.5200&lon=-122.6800
+```
+or POST body: `{ "lat": 45.52, "lon": -122.68 }`
+
+**Response** (success):
+```json
+{
+  "lat": 45.519992,
+  "lon": -122.681977,
+  "display_name": "701 SW 6th Ave, Portland, OR 97205, United States"
+}
+```
+
+**Response** (no result): `{ "result": null }`
+
+The app uses forward and reverse lookups on web through this proxy; native calls Nominatim directly (no CORS). Uses `EXPO_PUBLIC_OSM_IMPORT_API_URL` as base URL.
 
 ## Explore mode
 

@@ -8,7 +8,7 @@
 // - Meet-in-the-middle: origins + center + POIs in radius (food/coffee/bar)
 
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Platform,
@@ -34,12 +34,13 @@ import { Stop, StopType } from "../lib/stops/types";
 import { getPinColor } from "../lib/stops/utils";
 import { fetchOsrmRoute } from "../lib/api/fetchOsrmRoute";
 import { fetchOsmStops, regionToApiBbox } from "../lib/api/fetchOsmStops";
-import { fetchAllStops, fetchStopsNear } from "../lib/supabase/stops";
+import {
+  fetchAllStops,
+  fetchStopsNearWithRadiusExpansion,
+} from "../lib/supabase/stops";
 import { DOT_SIZES } from "../lib/ui/dotSizes";
 import { SPACING } from "../lib/ui/spacing";
 import { FONT_SIZES } from "../lib/ui/typography";
-
-const DEFAULT_RADIUS_MILES = 10;
 
 /** Map Create Party poiType to StopType[]. */
 function poiTypeToStopTypes(poiType?: string): StopType[] | undefined {
@@ -110,8 +111,6 @@ export default function MapScreen() {
     { key: string; coords: { latitude: number; longitude: number }[] }[]
   >([]);
 
-  const clusterIndex = useRef<Supercluster<{ stopId: string }> | null>(null);
-  const [clusterVersion, setClusterVersion] = useState(0);
   // Android: custom Marker views need tracksViewChanges=true to render; flip to false after paint for perf
   const [tracksViewChanges, setTracksViewChanges] = useState(Platform.OS === "android");
 
@@ -155,7 +154,7 @@ export default function MapScreen() {
 
           if (session) {
             const preferredTypes = poiTypeToStopTypes(session.poiType);
-            s = await fetchStopsNear(
+            const result = await fetchStopsNearWithRadiusExpansion(
               session.center.lat,
               session.center.lon,
               session.radiusMiles,
@@ -163,7 +162,18 @@ export default function MapScreen() {
                 ? { preferredTypes }
                 : { venueTypesOnly: true }
             );
-            if (isActive) setMmitmSession(session);
+            s = result.stops;
+            const nextSession =
+              result.radiusMiles === session.radiusMiles
+                ? session
+                : { ...session, radiusMiles: result.radiusMiles };
+            if (result.radiusMiles !== session.radiusMiles) {
+              await AsyncStorage.setItem(
+                MMITM_SESSION_KEY,
+                JSON.stringify(nextSession)
+              );
+            }
+            if (isActive) setMmitmSession(nextSession);
           } else {
             s = await fetchAllStops();
             if (isActive) setMmitmSession(null);
@@ -209,6 +219,11 @@ export default function MapScreen() {
     if (!filters) return [];
     return mmitmSession ? stops : filterStops(stops, filters, allowedTypes);
   }, [stops, filters, mmitmSession, allowedTypes]);
+
+  const clusterIndex = useMemo(
+    () => (filteredStops.length > 0 ? buildClusterIndex(filteredStops) : null),
+    [filteredStops]
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -257,18 +272,12 @@ export default function MapScreen() {
   const finalRegion: Region = region ?? initialRegion;
 
   const clusterTiles = useMemo(() => {
-    if (!clusterIndex.current) return [];
+    if (!clusterIndex) return [];
     const activeRegion = debouncedRegion ?? finalRegion;
     const bbox = regionToBBox(activeRegion);
     const zoom = regionToZoom(activeRegion);
-    return clusterIndex.current.getClusters(bbox, zoom);
-  }, [debouncedRegion, finalRegion, clusterVersion]);
-
-  useEffect(() => {
-    if (filteredStops.length === 0) return;
-    clusterIndex.current = buildClusterIndex(filteredStops);
-    setClusterVersion((v) => v + 1);
-  }, [filteredStops]);
+    return clusterIndex.getClusters(bbox, zoom);
+  }, [clusterIndex, debouncedRegion, finalRegion]);
 
   useEffect(() => {
     if (region && !debouncedRegion) setDebouncedRegion(region);
@@ -365,9 +374,9 @@ export default function MapScreen() {
             coordinate={{ latitude: lat, longitude: lon }}
             tracksViewChanges={tracksViewChanges}
             onPress={() => {
-              if (clusterIndex.current) {
+              if (clusterIndex) {
                 const expansionZoom = Math.min(
-                  clusterIndex.current.getClusterExpansionZoom(clusterId),
+                  clusterIndex.getClusterExpansionZoom(clusterId),
                   20
                 );
                 const delta = 360 / Math.pow(2, expansionZoom);
