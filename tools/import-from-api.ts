@@ -11,8 +11,8 @@
 //   EXPO_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY (required for Supabase)
 //   OSM_IMPORT_API_URL (optional, default: your GCP function URL)
 
-const { createClient } = require("@supabase/supabase-js");
-const { TOOLS_CONFIG } = require("./config");
+import { createClient } from "@supabase/supabase-js";
+import { TOOLS_CONFIG } from "./config";
 
 const DEFAULT_API_URL =
   "https://us-west1-edgeshop-2026.cloudfunctions.net/fetch_osm_stops";
@@ -40,14 +40,14 @@ async function fetchStopsFromApi(
   }
 
   const data = (await res.json()) as {
-    stops?: Array<{
+    stops?: {
       name: string;
       lat: number;
       lon: number;
       types: string[];
       has_wifi: boolean;
       pet_friendly: boolean;
-    }>;
+    }[];
     error?: string;
   };
   if (data.error) {

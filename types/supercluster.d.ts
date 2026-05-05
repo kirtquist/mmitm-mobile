@@ -10,13 +10,13 @@ declare module "supercluster" {
     constructor(options?: Supercluster.Options);
 
     // Load point features into the spatial index.
-    load(points: Array<Supercluster.PointFeature<Props>>): Supercluster<Props>;
+    load(points: Supercluster.PointFeature<Props>[]): Supercluster<Props>;
 
     // Read either cluster bubbles or individual point features for a bbox/zoom.
     getClusters(
       bbox: [number, number, number, number],
       zoom: number
-    ): Array<Supercluster.AnyFeature<Props>>;
+    ): Supercluster.AnyFeature<Props>[];
 
     // Calculate the zoom level needed to expand a tapped cluster.
     getClusterExpansionZoom(clusterId: number): number;

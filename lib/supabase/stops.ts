@@ -22,7 +22,7 @@
 import { getMmitmRadiusSearchSequence } from "../map/mmitmSession";
 import { STOP_TYPE_META } from "../stops/catalog";
 import { Stop, StopType } from "../stops/types";
-import { supabase } from "../../utils/supabase";
+import { supabase } from "../supabase";
 
 // Normalize DB "types" into string tokens.
 // Supports:

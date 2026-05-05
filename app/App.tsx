@@ -8,18 +8,20 @@ type Profile = {
   home_geom?: unknown;
 };
 
-const Check = supabase.auth.getSession().then(
-    ({ data, error }) => console.log(error ? `Auth error: ${error.message}` : 'Supabase auth OK')
-  )
-console.log('Check before useEffect' + Check.toString()) // Check is a promise so doesn't print until the promise is resolved
-console.log("--------------------------------")
-
 export default function App() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    void supabase.auth.getSession().then(({ error: authError }) => {
+      if (authError) {
+        console.log(`Auth error: ${authError.message}`);
+      } else {
+        console.log("Supabase auth OK");
+      }
+    });
+
     const getProfiles = async () => {
       try {
         const { data, error: err } = await supabase.from('profiles').select();
@@ -63,7 +65,7 @@ export default function App() {
     <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
       <Text style={{ marginBottom: 8 }}>Profiles</Text>
       {profiles.length === 0 ? (
-        <Text>No profiles yet. {Check}</Text>
+        <Text>No profiles yet.</Text>
       ) : (
         <FlatList
           data={profiles}

@@ -28,8 +28,8 @@ export const STOP_ICON: Record<StopUiIconKey, StopIconName> = {
   gas: "gas-station",            // fuel pump icon you like
   food: "silverware-fork-knife",
   park: "tree",
+  pub: "glass-cocktail",
   rest: "bed",
-  weigh: "scale-bathroom",
   attraction: "star-circle",
   other: "map-marker",
 

@@ -3,7 +3,13 @@
 // Load with: npx ts-node -r dotenv/config tools/import-from-api.ts
 
 function requireEnv(name: string): string {
-  const v = process.env[name];
+  const v =
+    name === "EXPO_PUBLIC_SUPABASE_URL"
+      ? process.env.EXPO_PUBLIC_SUPABASE_URL
+      : name === "SUPABASE_SERVICE_ROLE_KEY"
+        ? process.env.SUPABASE_SERVICE_ROLE_KEY
+        : undefined;
+
   if (!v) {
     throw new Error(`Missing env var: ${name}`);
   }

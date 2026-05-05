@@ -76,7 +76,11 @@ async function geocodeAddressNominatim(query: string): Promise<GeocodedResult | 
 
   if (!res.ok) return null;
 
-  const data = (await res.json()) as Array<{ lat: string; lon: string; display_name: string }>;
+  const data = (await res.json()) as {
+    lat: string;
+    lon: string;
+    display_name: string;
+  }[];
   const first = data?.[0];
   if (!first) return null;
 
