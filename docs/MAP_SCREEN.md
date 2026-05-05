@@ -34,6 +34,8 @@ Native map screen with POI clustering and meet-in-the-middle support. Uses `reac
 ## Web Fallback (`app/map.tsx`)
 
 - Flat list of stops; no MapView
+- Center and visible stop rows are reverse-geocoded to display addresses when available; coordinates remain as a fallback
+- Reverse lookups are cached by rounded coordinate and throttled to respect the Nominatim proxy rate limit
 - Region stored in AsyncStorage for parity with native behavior
 
 ## OSM Import by Viewport
@@ -52,6 +54,7 @@ Native map screen with POI clustering and meet-in-the-middle support. Uses `reac
 ## Meet-in-the-Middle
 
 1. Geocode member addresses: `lib/api/geocodeNominatim.ts` (`geocodeMembers`, `geocodeAddress`). Web uses GCP Cloud Function proxy (`?q=`); native calls Nominatim directly. Nominatim rate limit: 1 req/sec.
+   Reverse geocode helpers in the same file (`reverseGeocode`) convert map coordinates back to display addresses. Web routes these through the Cloud Function proxy (`?lat=...&lon=...`); native calls Nominatim directly.
 2. Compute center: `geographicMidpoint(origins)` (`lib/map/midpoint.ts`)
 3. Persist session in AsyncStorage under `@mmitm/session`:
    ```ts
@@ -59,6 +62,12 @@ Native map screen with POI clustering and meet-in-the-middle support. Uses `reac
    ```
 4. Map screen: if session present → show origin markers (green), center marker (blue), route polylines (OSRM), POIs from `fetchStopsNear(center, radius, { preferredTypes } or { venueTypesOnly: true })`
 5. `poiType` filters venues: Cafe→coffee, Pub→bar, Restaurant→food, Park→park
+
+### MMITM radius
+
+- Starting radius comes from Settings (`mmitmRadiusMiles`), default `5`
+- If a session query returns `0` stops, the app retries with `10`, then `20`, then `50` miles
+- The first radius with results is written back into the active session so map/results stay in sync
 
 To wire from index: after geocoding member addresses, call `geographicMidpoint(points)`, build the session object, `AsyncStorage.setItem(MMITM_SESSION_KEY, JSON.stringify(session))`, then `router.push('/map')`.
 

@@ -15,6 +15,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { geocodeMembers } from "../lib/api/geocodeNominatim";
 import { MMITM_SESSION_KEY } from "../lib/map/mmitmSession";
 import { geographicMidpoint } from "../lib/map/midpoint";
+import { loadSettingsFilters } from "../utils/settingsStorage";
 
 type Member = {
   id: string;
@@ -63,11 +64,12 @@ export default function PartySetupScreen() {
       }
       const center = geographicMidpoint(origins);
       if (!center) return;
+      const settings = await loadSettingsFilters();
 
       const session = {
         origins,
         center,
-        radiusMiles: 10,
+        radiusMiles: settings.mmitmRadiusMiles,
         poiType: selectedType,
       };
       await AsyncStorage.setItem(MMITM_SESSION_KEY, JSON.stringify(session));

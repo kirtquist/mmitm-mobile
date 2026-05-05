@@ -6,7 +6,7 @@ import { ActivityIndicator, FlatList, Text, useColorScheme, View } from "react-n
 import { getAppTheme } from "../../constants/theme";
 import { loadMapRegion, saveMapRegion } from "../lib/map/mapRegionStorage";
 import { filterStops } from "../lib/stops/filterStops";
-import { supabase } from "../lib/supabase";
+import { supabase } from "../../utils/supabase";
 import { SPACING } from "../lib/ui/spacing";
 import { FONT_SIZES } from "../lib/ui/typography";
 import { loadSettingsFilters, SettingsFilters } from "../utils/settingsStorage";

@@ -13,11 +13,13 @@ Expo/React Native app that helps groups find a central meeting place for coffee,
 ### Map
 - **With MMITM session:** Origin markers (green), center marker (blue), venue markers, route polylines (OSRM)
 - **Without session:** Browse all stops; Settings filters apply
+- **Web fallback:** Flat stop list shows reverse-geocoded addresses for map center and visible stops when available
 - **Load POIs here:** Fetch OSM POIs for viewport when no Supabase data
 - POI types: cafe, bar, pub, biergarten, restaurant, food, park, etc. (see Cloud Function)
 
 ### Settings
 - User filter toggles for POI types (food, coffee, bar, park, etc.)
+- MMITM starting radius in miles; empty searches expand outward automatically
 - Wifi required, Pets only
 - Types shown respect Catalog (admin-curated allowed list)
 

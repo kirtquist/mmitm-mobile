@@ -18,6 +18,7 @@ OVERPASS_TIMEOUT = 90
 MAX_LAT_SPAN = 0.5  # ~35mi at mid-latitudes
 MAX_LON_SPAN = 0.5
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
+NOMINATIM_REVERSE_URL = "https://nominatim.openstreetmap.org/reverse"
 
 # Maps OSM tags to app stop types (matches tools/import-osm-stops.ts)
 TAG_TO_TYPE = {
@@ -72,6 +73,25 @@ def _query_nominatim(q: str) -> dict | None:
     return {
         "lat": float(lat),
         "lon": float(lon),
+        "display_name": display_name,
+    }
+
+
+def _query_nominatim_reverse(lat: float, lon: float) -> dict | None:
+    """Proxy Nominatim reverse geocoding. Returns nearest display name or None."""
+    params = urllib.parse.urlencode(
+        {"lat": lat, "lon": lon, "format": "jsonv2", "zoom": 18}
+    )
+    url = f"{NOMINATIM_REVERSE_URL}?{params}"
+    req = urllib.request.Request(url, headers={"User-Agent": "MeetInTheMiddle/1.0"})
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        data = json.loads(resp.read().decode())
+    display_name = data.get("display_name") if isinstance(data, dict) else None
+    if not display_name:
+        return None
+    return {
+        "lat": float(data.get("lat", lat)),
+        "lon": float(data.get("lon", lon)),
         "display_name": display_name,
     }
 
@@ -317,6 +337,23 @@ def fetch_osm_stops(request) -> tuple[Any, int]:
             q = body.get("q")
         if q is not None and str(q).strip():
             result = _query_nominatim(str(q).strip())
+            if result:
+                return (json.dumps(result), 200, headers)
+            return (json.dumps({"result": None}), 200, headers)
+
+        # Reverse-geocode mode: ?lat=...&lon=... or body { "lat": ..., "lon": ... }
+        reverse_lat = request.args.get("lat")
+        reverse_lon = request.args.get("lon")
+        if (
+            (reverse_lat is None or reverse_lon is None)
+            and request.method == "POST"
+            and request.is_json
+        ):
+            body = request.get_json() or {}
+            reverse_lat = body.get("lat", reverse_lat)
+            reverse_lon = body.get("lon", reverse_lon)
+        if reverse_lat is not None and reverse_lon is not None:
+            result = _query_nominatim_reverse(float(reverse_lat), float(reverse_lon))
             if result:
                 return (json.dumps(result), 200, headers)
             return (json.dumps({"result": None}), 200, headers)

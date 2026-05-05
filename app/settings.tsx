@@ -3,6 +3,7 @@ import { router } from "expo-router";
 import {
   ActivityIndicator,
   Pressable,
+  TextInput,
   ScrollView,
   StyleSheet,
   Switch,
@@ -15,6 +16,10 @@ import { getAppTheme } from "../constants/theme";
 import { useAuthContext } from "../hooks/use-auth-context";
 import { signOut } from "../lib/auth";
 import { authHref } from "../lib/router";
+import {
+  MAX_MMITM_RADIUS_MILES,
+  normalizeMmitmRadiusMiles,
+} from "../lib/map/mmitmSession";
 import { STOP_TYPE_META, STOP_TYPE_ORDER } from "../lib/stops/catalog";
 import type { StopType } from "../lib/stops/types";
 import {
@@ -32,6 +37,7 @@ export default function SettingsScreen() {
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState<SettingsFilters | null>(null);
   const [allowedTypes, setAllowedTypes] = useState<StopType[] | null>(null);
+  const [radiusDraft, setRadiusDraft] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -42,6 +48,7 @@ export default function SettingsScreen() {
       ]);
       setFilters(f);
       setAllowedTypes(allowed);
+      setRadiusDraft(String(f.mmitmRadiusMiles));
     } finally {
       setLoading(false);
     }
@@ -60,6 +67,15 @@ export default function SettingsScreen() {
     const key = STOP_TYPE_TO_FILTER_KEY[type];
     const next = { ...filters, [key]: value };
     setFilters(next);
+    await saveSettingsFilters(next);
+  };
+
+  const handleRadiusSave = async () => {
+    if (!filters) return;
+    const mmitmRadiusMiles = normalizeMmitmRadiusMiles(radiusDraft);
+    const next = { ...filters, mmitmRadiusMiles };
+    setFilters(next);
+    setRadiusDraft(String(mmitmRadiusMiles));
     await saveSettingsFilters(next);
   };
 
@@ -154,6 +170,39 @@ export default function SettingsScreen() {
           Other filters
         </Text>
         <View style={[styles.row, { borderBottomColor: theme.border }]}>
+          <View style={styles.radiusCopy}>
+            <Text style={[styles.label, { color: theme.text }]}>
+              MMITM start radius (mi)
+            </Text>
+            <Text style={[styles.helperText, { color: theme.subtext }]}>
+              Expands to 10, 20, then {MAX_MMITM_RADIUS_MILES} miles if no venues
+              are found.
+            </Text>
+          </View>
+          <TextInput
+            value={radiusDraft}
+            onChangeText={setRadiusDraft}
+            onBlur={() => {
+              void handleRadiusSave();
+            }}
+            onSubmitEditing={() => {
+              void handleRadiusSave();
+            }}
+            keyboardType="number-pad"
+            maxLength={2}
+            style={[
+              styles.radiusInput,
+              {
+                color: theme.text,
+                borderColor: theme.border,
+                backgroundColor: theme.cardBg,
+              },
+            ]}
+            placeholder="5"
+            placeholderTextColor={theme.placeholder}
+          />
+        </View>
+        <View style={[styles.row, { borderBottomColor: theme.border }]}>
           <Text style={[styles.label, { color: theme.text }]}>Wifi required</Text>
           <Switch
             value={filters.wifiRequired}
@@ -208,4 +257,15 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   label: { fontSize: 16 },
+  radiusCopy: { flex: 1, paddingRight: 12 },
+  helperText: { fontSize: 12, marginTop: 4 },
+  radiusInput: {
+    minWidth: 64,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 16,
+    textAlign: "center",
+  },
 });

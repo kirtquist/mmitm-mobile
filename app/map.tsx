@@ -1,7 +1,7 @@
 // app/map.tsx
 //   Web fallback – list of stops, no react-native-maps on web
 import { useFocusEffect, useLocalSearchParams } from "expo-router";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   ActivityIndicator,
@@ -13,16 +13,31 @@ import {
 } from "react-native";
 import { getAppTheme } from "../constants/theme";
 import { fetchOsmStops, regionToApiBbox } from "../lib/api/fetchOsmStops";
+import { reverseGeocode } from "../lib/api/geocodeNominatim";
 import { MMITM_SESSION_KEY, type MmitmSession } from "../lib/map/mmitmSession";
 import { loadMapRegion, saveMapRegion } from "../lib/map/mapRegionStorage";
 import { filterStops } from "../lib/stops/filterStops";
-import { fetchAllStops, fetchStopsNear } from "../lib/supabase/stops";
+import {
+  fetchAllStops,
+  fetchStopsNearWithRadiusExpansion,
+} from "../lib/supabase/stops";
 import { SPACING } from "../lib/ui/spacing";
 import { FONT_SIZES } from "../lib/ui/typography";
 import { loadAllowedTypes } from "../utils/catalogStorage";
 import { loadSettingsFilters, SettingsFilters } from "../utils/settingsStorage";
 
 import { Stop, StopType } from "../lib/stops/types";
+
+const STOP_ADDRESS_LOOKUP_LIMIT = 20;
+const REVERSE_GEOCODE_DELAY_MS = 1100;
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function coordinateKey(lat: number, lon: number): string {
+  return `${lat.toFixed(5)},${lon.toFixed(5)}`;
+}
 
 /** Map Create Party poiType to StopType[]. */
 function poiTypeToStopTypes(poiType?: string): StopType[] | undefined {
@@ -51,17 +66,11 @@ export default function MapScreen() {
     longitudeDelta: number;
   } | null>(null);
   const [loadingOsm, setLoadingOsm] = useState(false);
+  const [centerAddress, setCenterAddress] = useState<string | null>(null);
+  const [stopAddresses, setStopAddresses] = useState<Record<string, string>>({});
+  const reverseAddressCacheRef = useRef<Map<string, string>>(new Map());
   const { stopId } = useLocalSearchParams<{ stopId?: string }>();
   
-  const handleWebRegionChange = (next: {
-    latitude: number;
-    longitude: number;
-    latitudeDelta: number;
-    longitudeDelta: number;
-  }) => {
-    setWebRegion(next);
-    void saveMapRegion(next);
-  };
   const colorScheme = useColorScheme();
   const theme = getAppTheme(colorScheme === "dark");
   
@@ -87,7 +96,7 @@ export default function MapScreen() {
 
           if (session) {
             const preferredTypes = poiTypeToStopTypes(session.poiType);
-            s = await fetchStopsNear(
+            const result = await fetchStopsNearWithRadiusExpansion(
               session.center.lat,
               session.center.lon,
               session.radiusMiles,
@@ -95,7 +104,18 @@ export default function MapScreen() {
                 ? { preferredTypes }
                 : { venueTypesOnly: true }
             );
-            if (isActive) setMmitmSession(session);
+            s = result.stops;
+            const nextSession =
+              result.radiusMiles === session.radiusMiles
+                ? session
+                : { ...session, radiusMiles: result.radiusMiles };
+            if (result.radiusMiles !== session.radiusMiles) {
+              await AsyncStorage.setItem(
+                MMITM_SESSION_KEY,
+                JSON.stringify(nextSession)
+              );
+            }
+            if (isActive) setMmitmSession(nextSession);
           } else {
             s = await fetchAllStops();
             if (isActive) setMmitmSession(null);
@@ -183,21 +203,92 @@ export default function MapScreen() {
     void saveMapRegion(next);
   }, [stopId, mapReady, filteredStops]);
 
-  const regionToShow =
-    webRegion ??
-    (filteredStops.length > 0
-      ? {
-          latitude: filteredStops[0].lat,
-          longitude: filteredStops[0].lon,
-          latitudeDelta: 0.3,
-          longitudeDelta: 0.3,
+  const regionToShow = useMemo(
+    () =>
+      webRegion ??
+      (filteredStops.length > 0
+        ? {
+            latitude: filteredStops[0].lat,
+            longitude: filteredStops[0].lon,
+            latitudeDelta: 0.3,
+            longitudeDelta: 0.3,
+          }
+        : {
+            latitude: 45.0,
+            longitude: -122.9,
+            latitudeDelta: 1,
+            longitudeDelta: 1,
+          }),
+    [filteredStops, webRegion]
+  );
+
+  useEffect(() => {
+    const key = coordinateKey(regionToShow.latitude, regionToShow.longitude);
+    const cached = reverseAddressCacheRef.current.get(key);
+    if (cached) {
+      setCenterAddress(cached);
+      return;
+    }
+
+    let cancelled = false;
+    const timeoutId = setTimeout(() => {
+      void (async () => {
+        const result = await reverseGeocode(
+          regionToShow.latitude,
+          regionToShow.longitude
+        );
+        if (cancelled) return;
+        const label =
+          result?.displayName ??
+          `${regionToShow.latitude.toFixed(4)}, ${regionToShow.longitude.toFixed(4)}`;
+        reverseAddressCacheRef.current.set(key, label);
+        setCenterAddress(label);
+      })();
+    }, 400);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timeoutId);
+    };
+  }, [regionToShow.latitude, regionToShow.longitude]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadStopAddresses = async () => {
+      const pending = filteredStops.slice(0, STOP_ADDRESS_LOOKUP_LIMIT).filter((stop) => {
+        const key = coordinateKey(stop.lat, stop.lon);
+        return !reverseAddressCacheRef.current.get(key);
+      });
+
+      for (let i = 0; i < pending.length; i++) {
+        const stop = pending[i];
+        const key = coordinateKey(stop.lat, stop.lon);
+        const cached = reverseAddressCacheRef.current.get(key);
+
+        if (cached) {
+          if (cancelled) return;
+          setStopAddresses((current) => ({ ...current, [stop.id]: cached }));
+          continue;
         }
-      : {
-          latitude: 45.0,
-          longitude: -122.9,
-          latitudeDelta: 1,
-          longitudeDelta: 1,
-        });
+
+        if (i > 0) await delay(REVERSE_GEOCODE_DELAY_MS);
+        const result = await reverseGeocode(stop.lat, stop.lon);
+        if (cancelled) return;
+
+        const label =
+          result?.displayName ?? `${stop.lat.toFixed(4)}, ${stop.lon.toFixed(4)}`;
+        reverseAddressCacheRef.current.set(key, label);
+        setStopAddresses((current) => ({ ...current, [stop.id]: label }));
+      }
+    };
+
+    void loadStopAddresses();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [filteredStops]);
 
   const handleLoadPoisHere = useCallback(async () => {
     setLoadingOsm(true);
@@ -275,8 +366,9 @@ export default function MapScreen() {
           marginBottom: SPACING.md,
         }}
       >
-        Center: {regionToShow.latitude.toFixed(4)},{" "}
-        {regionToShow.longitude.toFixed(4)}
+        Center:{" "}
+        {centerAddress ??
+          `${regionToShow.latitude.toFixed(4)}, ${regionToShow.longitude.toFixed(4)}`}
         {"\n"}
         Zoom: {regionToShow.latitudeDelta.toFixed(4)} /{" "}
         {regionToShow.longitudeDelta.toFixed(4)}
@@ -318,7 +410,8 @@ export default function MapScreen() {
               {item.name}
             </Text>
             <Text style={{ fontSize: FONT_SIZES.xs, color: theme.placeholder }}>
-              Lat: {item.lat.toFixed(4)} · Lon: {item.lon.toFixed(4)}
+              {stopAddresses[item.id] ??
+                `${item.lat.toFixed(4)}, ${item.lon.toFixed(4)}`}
             </Text>
           </View>
         )}

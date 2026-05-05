@@ -19,9 +19,10 @@
 //    - known types populate Stop.types (StopType[])
 //    - unknown types preserved in Stop.unknownTypes for visibility/debugging
 
+import { getMmitmRadiusSearchSequence } from "../map/mmitmSession";
 import { STOP_TYPE_META } from "../stops/catalog";
 import { Stop, StopType } from "../stops/types";
-import { supabase } from "../supabase";
+import { supabase } from "../../utils/supabase";
 
 // Normalize DB "types" into string tokens.
 // Supports:
@@ -251,4 +252,27 @@ export async function fetchStopsNear(
   }
 
   return near;
+}
+
+/**
+ * Fetch MMITM stops with radius expansion fallback.
+ * Starts with the user-configured radius and only expands if a search returns 0 stops.
+ */
+export async function fetchStopsNearWithRadiusExpansion(
+  lat: number,
+  lon: number,
+  startRadiusMiles: number,
+  options?: { venueTypesOnly?: boolean; preferredTypes?: StopType[] }
+): Promise<{ stops: Stop[]; radiusMiles: number }> {
+  const radiusSequence = getMmitmRadiusSearchSequence(startRadiusMiles);
+
+  for (let i = 0; i < radiusSequence.length; i++) {
+    const radiusMiles = radiusSequence[i];
+    const stops = await fetchStopsNear(lat, lon, radiusMiles, options);
+    if (stops.length > 0 || i === radiusSequence.length - 1) {
+      return { stops, radiusMiles };
+    }
+  }
+
+  return { stops: [], radiusMiles: radiusSequence[0] };
 }

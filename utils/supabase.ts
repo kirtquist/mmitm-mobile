@@ -7,6 +7,8 @@ const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY
 console.log('supabaseUrl', supabaseUrl)
 
+console.log("SUPABASE_INIT: KEY:", supabaseAnonKey ? "Present!" : "MISSING");
+
 export const supabase = createClient(supabaseUrl!, supabaseAnonKey!, {
   auth: {
     // Use AsyncStorage on native; on web, omit to use browser's localStorage
