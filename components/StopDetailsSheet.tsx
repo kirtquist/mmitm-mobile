@@ -10,17 +10,19 @@
 // - Show a small type-color dot next to stop name for visual consistency
 // - Keep file lightweight (no extra libraries)
 
+import { router } from "expo-router";
 import React, { useEffect, useState } from "react";
 import { Pressable, Text, useColorScheme, View } from "react-native";
 
 import { getAppTheme } from "../constants/theme";
+import { useAuthContext } from "../hooks/use-auth-context";
+import { authHref } from "../lib/router";
 import { SPACING } from "../lib/ui/spacing";
 import { FONT_SIZES } from "../lib/ui/typography";
 
 import { Stop } from "../lib/stops/types";
 import { formatTypes, getPinColor } from "../lib/stops/utils";
 
-import { supabase } from "../lib/supabase";
 import { addFavorite, isFavorite, removeFavorite } from "../lib/supabase/favorites";
 
 import { DOT_SIZES } from "../lib/ui/dotSizes";
@@ -35,6 +37,8 @@ export default function StopDetailsSheet({ stop, onClose }: Props) {
   const scheme = useColorScheme();
   const isDark = scheme === "dark";
   const theme = getAppTheme(isDark);
+  const { session } = useAuthContext();
+  const userId = session?.user?.id ?? null;
 
   // Favorites state (per-user)
   const [favorite, setFavorite] = useState(false);
@@ -43,24 +47,21 @@ export default function StopDetailsSheet({ stop, onClose }: Props) {
   useEffect(() => {
     async function loadFav() {
       if (!stop) return;
-
-      const { data } = await supabase.auth.getUser();
-      const user = data?.user;
-      if (!user) {
+      if (!userId) {
         setFavorite(false);
         return;
       }
 
       try {
-        const fav = await isFavorite(user.id, stop.id);
+        const fav = await isFavorite(userId, stop.id);
         setFavorite(fav);
       } catch (e) {
         console.warn("Failed to load favorite state", e);
       }
     }
 
-    loadFav();
-  }, [stop]);
+    void loadFav();
+  }, [stop, userId]);
 
   // If no stop selected, render nothing
   if (!stop) return null;
@@ -198,16 +199,17 @@ export default function StopDetailsSheet({ stop, onClose }: Props) {
       {/* Favorite button (theme-correct neutrals) */}
       <Pressable
         onPress={async () => {
-          const { data } = await supabase.auth.getUser();
-          const user = data?.user;
-          if (!user) return alert("Login required for favorites");
+          if (!userId) {
+            router.push(authHref("login", { next: "/map" }));
+            return;
+          }
 
           try {
             if (favorite) {
-              await removeFavorite(user.id, stop.id);
+              await removeFavorite(userId, stop.id);
               setFavorite(false);
             } else {
-              await addFavorite(user.id, stop.id);
+              await addFavorite(userId, stop.id);
               setFavorite(true);
             }
           } catch (e) {

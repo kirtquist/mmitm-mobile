@@ -11,7 +11,10 @@ import {
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { getAppTheme } from "../constants/theme";
+import { useAuthContext } from "../hooks/use-auth-context";
+import { signOut } from "../lib/auth";
 import { MMITM_SESSION_KEY } from "../lib/map/mmitmSession";
+import { authHref } from "../lib/router";
 
 type MenuItem = {
   label: string;
@@ -24,6 +27,7 @@ export function HeaderMenuButton() {
   const [visible, setVisible] = useState(false);
   const colorScheme = useColorScheme();
   const theme = getAppTheme(colorScheme === "dark");
+  const { session } = useAuthContext();
 
   const handleCatalog = () => {
     setVisible(false);
@@ -37,14 +41,30 @@ export function HeaderMenuButton() {
 
   const handleLogout = async () => {
     setVisible(false);
+    await signOut();
     await AsyncStorage.removeItem(MMITM_SESSION_KEY);
     router.replace("/");
+  };
+
+  const handleLogin = () => {
+    setVisible(false);
+    router.push(authHref("login", { next: "/settings" }));
+  };
+
+  const handleSignup = () => {
+    setVisible(false);
+    router.push(authHref("signup", { next: "/settings" }));
   };
 
   const menuItems: MenuItem[] = [
     { label: "Catalog", route: "/catalog", onPress: handleCatalog },
     { label: "Settings", route: "/settings", onPress: handleSettings },
-    { label: "Logout", route: "/", onPress: handleLogout },
+    ...(session?.user
+      ? [{ label: "Sign Out", route: "/", onPress: handleLogout }]
+      : [
+          { label: "Sign In", route: "/(auth)/login", onPress: handleLogin },
+          { label: "Create Account", route: "/(auth)/signup", onPress: handleSignup },
+        ]),
   ];
 
   return (

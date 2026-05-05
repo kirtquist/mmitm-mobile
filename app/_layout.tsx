@@ -23,22 +23,31 @@
 //   );
 // }
 import { Stack } from "expo-router";
+import { SplashScreenController } from "../components/splash-screen-controller";
 
 import { HeaderMenuButton } from "../components/HeaderMenuButton";
+import AuthProvider from "../providers/auth-provider";
 
 export default function RootLayout() {
   return (
-    <Stack
-      screenOptions={{
-        headerRight: () => <HeaderMenuButton />,
-      }}
-    >
-      <Stack.Screen name="index" options={{ title: "Meet Me in the Middle" }} />
-      <Stack.Screen name="results" options={{ title: "Suggestions" }} />
-      <Stack.Screen name="map" options={{ title: "Map" }} />
-      <Stack.Screen name="place/[id]" options={{ title: "Details" }} />
-      <Stack.Screen name="settings" options={{ title: "Settings" }} />
-      <Stack.Screen name="catalog" options={{ title: "Catalog" }} />
-    </Stack>
+    <AuthProvider>
+      <SplashScreenController />
+      <Stack
+        screenOptions={{
+          headerRight: () => <HeaderMenuButton />,
+        }}
+      >
+        <Stack.Screen name="index" options={{ title: "Meet Me in the Middle" }} />
+        <Stack.Screen name="results" options={{ title: "Suggestions" }} />
+        <Stack.Screen name="map" options={{ title: "Map" }} />
+        <Stack.Screen name="place/[id]" options={{ title: "Details" }} />
+        <Stack.Screen name="settings" options={{ title: "Settings" }} />
+        <Stack.Screen name="catalog" options={{ title: "Catalog" }} />
+        <Stack.Screen
+          name="(auth)"
+          options={{ headerShown: false, presentation: "modal" }}
+        />
+      </Stack>
+    </AuthProvider>
   );
 }
